@@ -137,7 +137,7 @@ Private Function BodyFromFile(sFileName As String, Optional ByVal bAsync As Bool
     If LOF(nFile) > 0 Then
         ReDim baBuffer(0 To LOF(nFile) - 1) As Byte
         Get nFile, , baBuffer
-        sPostData = StrConv(baBuffer, vbUnicode)
+        sPostData = StrConv(CStr(baBuffer), vbUnicode)
     End If
     Close nFile
     '--- prepare body
