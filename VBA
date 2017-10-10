@@ -1,0 +1,427 @@
+'--------------------------------------------------------------------------------------------------------------------------
+' CASHSTORY ADDIN EXCEL SEPT 2017
+'--------------------------------------------------------------------------------------------------------------------------
+
+'--------------------------------------------------------------------------------------------------------------------------
+' TOUCAN TOCO API VBA PROGRAM
+'--------------------------------------------------------------------------------------------------------------------------
+
+'WARNING : NEED TO BE EXECUTED FIRST DO NOT MOVE, OR REMOVE !
+Private Type BodyAndContentType
+    body As String
+    contentType As String
+End Type
+
+'WARNING : ENCRIPTION OF THE USER NAME AND PASSWORD
+Function Base64Encode(sText)
+    Dim oXML, oNode
+    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
+    Set oNode = oXML.createElement("base64")
+    oNode.DataType = "bin.base64"
+    oNode.nodeTypedValue = Stream_StringToBinary(sText)
+    Base64Encode = oNode.Text
+    Set oNode = Nothing
+    Set oXML = Nothing
+End Function
+
+'WARNING : TRANSFORM STRING TO BINARY
+'Stream_StringToBinary Function
+'Text - string parameter To convert To binary data
+
+Function Stream_StringToBinary(Text)
+  Const adTypeText = 2
+  Const adTypeBinary = 1
+
+  'Create Stream object
+  Dim BinaryStream 'As New Stream
+  Set BinaryStream = CreateObject("ADODB.Stream")
+
+  'Specify stream type - we want To save text/string data.
+  BinaryStream.Type = adTypeText
+
+  'Specify charset For the source text (unicode) data.
+  BinaryStream.Charset = "us-ascii"
+
+  'Open the stream And write text/string data To the object
+  BinaryStream.Open
+  BinaryStream.WriteText Text
+
+  'Change stream type To binary
+  BinaryStream.Position = 0
+  BinaryStream.Type = adTypeBinary
+
+  'Ignore first two bytes - sign of
+  BinaryStream.Position = 0
+
+  'Open the stream And get binary data from the object
+  Stream_StringToBinary = BinaryStream.Read
+
+  Set BinaryStream = Nothing
+End Function
+
+'WARNING : TRANSFORM BINARY TO STRING
+'2003 Antonin Foller, http://www.motobit.com
+'Binary - VT_UI1 | VT_ARRAY data To convert To a string
+Function Stream_BinaryToString(Binary)
+  Const adTypeText = 2
+  Const adTypeBinary = 1
+
+  'Create Stream object
+  Dim BinaryStream 'As New Stream
+  Set BinaryStream = CreateObject("ADODB.Stream")
+
+  'Specify stream type - we want To save text/string data.
+  BinaryStream.Type = adTypeBinary
+
+  'Open the stream And write text/string data To the object
+  BinaryStream.Open
+  BinaryStream.Write Binary
+
+  'Change stream type To binary
+  BinaryStream.Position = 0
+  BinaryStream.Type = adTypeText
+
+  'Specify charset For the source text (unicode) data.
+  BinaryStream.Charset = "us-ascii"
+
+  'Open the stream And get binary data from the object
+  Stream_BinaryToString = BinaryStream.ReadText
+  Set BinaryStream = Nothing
+End Function
+
+'ACTION:Format the body in Toucan Request Payload Header (webapp>inspecter>network>header>request payload)
+Private Function ToucanBodyFromFile(dataSourceName As String, sFileName As String, Optional ByVal bAsync As Boolean) As BodyAndContentType
+    webkit = "------WebKitFormBoundaryNMQVt0bsL5DAwy08"
+    Content = "Content-Disposition: form-data; name=""data"""
+    Filename = "{""filename"":""" & dataSourceName & """}"
+    body = webkit & vbCrLf & _
+        Content & vbCrLf & vbCrLf & _
+        Filename & vbCrLf & _
+        BodyFromFile(sFileName)
+
+    ToucanBodyFromFile.body = body
+    ToucanBodyFromFile.contentType = "multipart/form-data; boundary=----WebKitFormBoundaryNMQVt0bsL5DAwy08"
+End Function
+
+'ACTION: DO YOU KNOW???
+Private Function pvToByteArray(sText As String) As Byte()
+    pvToByteArray = StrConv(sText, vbFromUnicode)
+End Function
+
+'ACTION : Base of any ToucanRequest from RequestHeader
+Public Function ToucanRequest(method, endpoint, Optional body = "", Optional contentType = "application/json")
+
+    Set objHTTP = CreateObject("WinHttp.WinHttpRequest.5.1")
+    'file = "C:\Users\raven\Documents\test.txt"
+    url = Login_UF.url + endpoint + "?stage=staging&validation=false"
+    objHTTP.Open method, url, False
+    objHTTP.SetRequestHeader "User-Agent", "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0)"
+    objHTTP.SetRequestHeader "Authorization", ("Basic " + Base64Encode(Login_UF.user + ":" + Login_UF.pwd))
+    objHTTP.SetRequestHeader "Content-Type", contentType
+    objHTTP.Send body
+    ToucanRequest = objHTTP.ResponseText
+
+End Function
+
+
+'ACTION:Set the body in Toucan Request Payload Header (webapp>inspecter>network>header>request payload)
+Private Function BodyFromFile(sFileName As String, Optional ByVal bAsync As Boolean) As String
+    Const STR_BOUNDARY  As String = "----WebKitFormBoundaryNMQVt0bsL5DAwy08"
+    Dim nFile           As Integer
+    Dim baBuffer()      As Byte
+    Dim sPostData       As String
+ 
+    '--- read file
+    nFile = FreeFile
+    Open sFileName For Binary Access Read As nFile
+    If LOF(nFile) > 0 Then
+        ReDim baBuffer(0 To LOF(nFile) - 1) As Byte
+        Get nFile, , baBuffer
+        sPostData = StrConv(baBuffer, vbUnicode)
+    End If
+    Close nFile
+    '--- prepare body
+    BodyFromFile = "--" & STR_BOUNDARY & vbCrLf & _
+        "Content-Disposition: form-data; name=""file""; filename=""" & Mid$(sFileName, InStrRev(sFileName, "\") + 1) & """" & vbCrLf & _
+        "Content-Type: application/octet-stream" & vbCrLf & vbCrLf & _
+        sPostData & vbCrLf & _
+        "--" & STR_BOUNDARY & "--"
+End Function
+'APP BUTTON : Upload sheet to cloud in csv (sheet name need to be the same as in toucan app)
+Sub UploadCurrentSheet(ByVal Control As IRibbonControl)
+    MsgBox Application.ActiveWorkbook.ActiveSheet.Name
+    MsgBox UploadToucanDataSource("lines_1.csv", "Application.ActiveWorkbook.ActiveSheet.Name")
+
+End Sub
+'APP BUTTON :Settings
+Sub Settings(ByVal Control As IRibbonControl)
+    'MsgBox ToucanRequest("GET", "operations/report")
+    'MsgBox ToucanRequest("GET", "data/sources")
+    MsgBox Application.ActiveWorkbook.ActiveSheet.Name
+    MsgBox UploadToucanDataSource("lines_1.csv", "C:\Users\raven\AppData\Roaming\Microsoft\AddIns\datamodels\lines_1.csv")
+    'MsgBox ToucanBodyFromFile("datamodel_views.xlsx", Application.ActiveWorkbook.FullName).body
+    'MsgBox UploadToucanDataSource("datamodel_views.xlsx", Application.ActiveWorkbook.FullName)
+End Sub
+'APP BUTTON :DisplayOperationReport
+Sub DisplayOperationReport(ByVal Control As IRibbonControl)
+    MsgBox ToucanRequest("GET", "operations/report")
+End Sub
+
+
+'ACTION : Upload Toucan Datasource from Settings
+Public Function UploadToucanDataSource(dataSourceName As String, filePath As String):
+    Dim file As BodyAndContentType
+    file = ToucanBodyFromFile(dataSourceName, filePath)
+    UploadToucanDataSource = ToucanRequest("POST", "data/sources", file.body, file.contentType)
+End Function
+'APP BUTTON :Preprocess datasources
+Sub PreprocessDatasources(ByVal Control As IRibbonControl)
+    MsgBox ToucanRequest("POST", "operations", "{""operations"":[""preprocess_data_sources""]}")
+End Sub
+
+
+
+
+'--------------------------------------------------------------------------------------------------------------------------
+' CASH STORY ADDIN PROGRAM
+'--------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+'ACTION:Load Staging Page
+Sub LoadStagingPage(ByVal Control As IRibbonControl)
+    MsgBox ("You are going to be redirected to your app in STAGING MODE" & vbNewLine & "To push your datasources, click on OPERATIONS > tick PREPROCESS > START NOW" & vbNewLine & vbNewLine & "Once you are ready, don't forget to RELEASE TO PROD")
+    ActiveWorkbook.FollowHyperlink _
+      Address:="https://cashstory.toucantoco.com/cashstory-l1/config-files-editor?report=0&dashboard=0&admin&stage=staging", _
+      NewWindow:=True
+End Sub
+'ACTION:Load Production Page
+Sub LoadProductionPage(ByVal Control As IRibbonControl)
+    MsgBox ("You are going to be redirected to your app in STAGING MODE" & vbNewLine & "To push your datasources, click on OPERATIONS > tick PREPROCESS > START NOW" & vbNewLine & vbNewLine & "Once you are ready, don't forget to RELEASE TO PROD")
+    ActiveWorkbook.FollowHyperlink _
+      Address:="https://cashstory.toucantoco.com/cashstory-l1?report=0&dashboard=0", _
+      NewWindow:=True
+End Sub
+'ACTION:Load Docs Page
+Sub LoadDocsPage(ByVal Control As IRibbonControl)
+    MsgBox ("You are going to be redirected to the ToucanToco online documentation")
+    ActiveWorkbook.FollowHyperlink _
+      Address:="https://docs.toucantoco.com/concepteur/chart-config/03-charts-configuration.html", _
+      NewWindow:=True
+End Sub
+'ACTION:Load Support Page
+Sub LoadSupportPage(ByVal Control As IRibbonControl)
+    MsgBox ("You are going to be redirected to the CashStory support page")
+    ActiveWorkbook.FollowHyperlink _
+      Address:="https://cashstory.typeform.com/to/xHYwC0", _
+      NewWindow:=True
+End Sub
+
+'Déclarations des variables publiques
+Public user As String
+Public pwd As String
+Public url As String
+
+
+'ACTION:Select and insert datamodels in "New View" dropdown
+Sub Login(Control As IRibbonControl)
+
+user = ""
+pwd = ""
+url = ""
+
+Login_UF.Show
+
+user = Login_UF.TextBox1.Value
+pwd = Login_UF.TextBox2.Value
+url = Login_UF.TextBox3.Value
+
+MsgBox (user & pwd & url)
+
+End Sub
+
+'ACTION:Select and insert datamodels in "New View" dropdown
+Sub GalleryOnAction(Control As IRibbonControl, selectedID As String, selectedIndex As Integer)
+
+MsgBox "We are going to generate a new sheet with the datamodel of the viz"
+
+Application.ScreenUpdating = False  'Désactivation des executions
+Application.DisplayAlerts = False   'Désactivation des messages d'alertes
+
+'--------------------------------------------------------------------------------------------------------------------------
+'    PARAMETRAGE
+'--------------------------------------------------------------------------------------------------------------------------
+
+'---- Déclaration des variables locales
+
+Dim i As Integer, j As Integer                        'Compteur
+Dim onglet_src_exist As Boolean                       'permet de vérifier si l'onglet source existe
+Dim Wb As Workbook, Fichier As Workbook, Wb2 As Workbook
+Dim ws As Worksheet
+
+'---- Déclaration des éléments relatifs à l'emplacement du fichier dans l'Add-in
+
+chemin_src = ThisWorkbook.path & "\datamodels"
+fichier_src = "datamodel_views.xlsx"
+onglet_src = selectedID
+rep_fichier_src = chemin_src & "\" & fichier_src
+
+'----- Récupération des noms des fichiers
+
+Fich_init = ActiveWorkbook.Name
+chemin_init = Workbooks(Fich_init).FullName
+
+Set Wb = GetObject(chemin_init)
+Set ws = ActiveWorkbook.Sheets.Add(After:=ActiveWorkbook.Sheets(ActiveWorkbook.Sheets.Count))
+
+'----------------------------------------------------------------------------------------------------------------'
+' Création de la nouvelle feuille excel                                                        '
+'----------------------------------------------------------------------------------------------------------------'
+Rename:
+
+ns_name = InputBox("Input the name of your data source.", "Data source", selectedID)
+ns_name = "cs_" & ns_name
+
+onglet_exist = False
+For j = 1 To ActiveWorkbook.Sheets.Count
+    If ActiveWorkbook.Sheets(j).Name = ns_name Then onglet_exist = True
+Next
+
+If onglet_exist = True Then
+MsgBox ("This name already exist.")
+GoTo Rename
+End If
+                
+If ns_name <> "" Then
+    ws.Name = ns_name
+        With ActiveWorkbook.Sheets(ns_name).Tab
+        .Color = 10344372
+        .TintAndShade = 0
+        End With
+End If
+
+'----------------------------------------------------------------------------------------------------------------'
+' TESTS                                                           '
+'----------------------------------------------------------------------------------------------------------------'
+
+'---- Validité du chemin source
+
+If Dir(chemin_src, vbDirectory) = "" Then
+MsgBox "Le répertoire source" & chemin_src & " n'existe pas."
+GoTo Fin
+End If
+
+'---- Validité du Fichier source
+
+If Dir(rep_fichier_src) = "" Then
+MsgBox "Le fichier " & fichier_src & " n'existe pas dans le répertoire spécifié."
+GoTo Fin
+End If
+
+'--------------------------------------------------------------------------------------------------------------------------
+' Copie des données dans l'onglet Cible
+'--------------------------------------------------------------------------------------------------------------------------
+
+Workbooks.Open Filename:=rep_fichier_src, ReadOnly:=True, UpdateLinks:=False
+chemin_src = Workbooks(fichier_src).FullName
+
+Set Wb2 = GetObject(chemin_src)
+
+'--- Copie dans le press-papier des données source
+ActiveWorkbook.Sheets(onglet_src).Select
+Range("A1").Select
+Selection.CurrentRegion.Copy
+
+'--- Collage en valeur dans l'onglet cible
+Wb.Activate
+Range("A1").Select
+Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+Application.CutCopyMode = False
+
+'--- Fermeture du fichier source
+Wb2.Activate
+ActiveWindow.Close
+
+Application.DisplayAlerts = True    'Réactivation des alertes
+
+Fin:
+
+End Sub
+'DATAMODEL BUTTON :Export current sheet to csv in current folder of the file
+Sub ExportSheetToCSV(ByVal Control As IRibbonControl)
+
+'Application.DisplayAlerts = False
+
+MsgBox ("You are going to export your current cash story sheet in your current workbook folder in csv format.")
+
+'--------------------------------------------------------------------------------------------------------------------------
+' PARAMETER
+'--------------------------------------------------------------------------------------------------------------------------
+
+Dim Wb As Workbook
+Dim xcsvFile As String
+Dim currentFolder As String
+Dim xWs As String
+
+currentFolder = ActiveWorkbook.path
+currentFile = ActiveWorkbook.FullName
+
+Set Wb = GetObject(currentFile)
+
+'--------------------------------------------------------------------------------------------------------------------------
+' EXPORT CURRENT CS SHEET IN CURRENT FOLDER
+'--------------------------------------------------------------------------------------------------------------------------
+Wb.Activate
+xWs = ActiveWorkbook.ActiveSheet.Name
+
+If Left(xWs, 3) = "cs_" Then
+ActiveWorkbook.ActiveSheet.Copy
+xcsvFile = currentFolder & "\" & xWs & ".csv"
+Application.ActiveWorkbook.SaveAs Filename:=xcsvFile, Local:=True, FileFormat:=xlCSV, CreateBackup:=False
+Application.ActiveWorkbook.Saved = True
+Application.ActiveWorkbook.Close
+End If
+
+MsgBox ("Your cash story sheet is now saved in your current workbook folder " & currentFolder & ".")
+
+'Application.DisplayAlerts = True
+
+End Sub
+'DATAMODEL BUTTON :Export ALL current sheet to csv in current folder of the file
+Sub ExportSheetsToCSV(ByVal Control As IRibbonControl)
+
+'Application.DisplayAlerts = False
+
+MsgBox ("You are going to export all your CashStory® sheets in your current workbook folder in csv format.")
+
+'--------------------------------------------------------------------------------------------------------------------------
+' PARAMETER
+'--------------------------------------------------------------------------------------------------------------------------
+
+Dim xWs As Worksheet
+Dim xcsvFile As String
+Dim currentFolder As String
+
+currentFolder = ActiveWorkbook.path
+
+'--------------------------------------------------------------------------------------------------------------------------
+' EXPORT CS SHEETS IN CURRENT FOLDER
+'--------------------------------------------------------------------------------------------------------------------------
+
+For Each xWs In Application.ActiveWorkbook.Worksheets
+If Left(xWs.Name, 3) = "cs_" Then
+xWs.Copy
+xcsvFile = currentFolder & "\" & xWs.Name & ".csv"
+Application.ActiveWorkbook.SaveAs Filename:=xcsvFile, Local:=True, FileFormat:=xlCSV, CreateBackup:=False
+Application.ActiveWorkbook.Saved = True
+Application.ActiveWorkbook.Close
+End If
+Next
+
+MsgBox ("Your cash story sheets are now saved in your current workbook folder " & currentFolder & ".")
+
+'Application.DisplayAlerts = True
+
+End Sub
